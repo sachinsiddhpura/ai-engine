@@ -1,0 +1,21 @@
+info:
+  name: AI Basics
+  type: http
+
+http:
+  method: POST
+  url: http://localhost:8000/api/v1/ai/chat
+  body:
+    type: json
+    data: |-
+      {
+        "session_id":"1",
+        "message":"what is my name ?"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
