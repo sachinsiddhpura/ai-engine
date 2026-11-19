@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 from openai import AsyncOpenAI
 from app.config import settings
@@ -11,6 +12,8 @@ from app.schemas.chat import (
     ToolChatRequest,
     ToolChatResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class LLMService:
@@ -27,10 +30,16 @@ class LLMService:
     # FEATURE 1 & 2: Multi-Turn Memory + Context/Token Tracking
     # ---------------------------------------------------------
     async def chat_with_memory(self, req: MultiTurnChatRequest) -> MultiTurnChatResponse:
-        if req.session_id not in self._sessions:
+        logger.debug("chat_with_memory | session_id=%s message=%r", req.session_id, req.message)
+
+        is_new_session = req.session_id not in self._sessions
+        if is_new_session:
             self._sessions[req.session_id] = [
                 {"role": "system", "content": req.system_prompt}
             ]
+            logger.debug("Step 1: new session created | session_id=%s", req.session_id)
+        else:
+            logger.debug("Step 1: existing session reused | session_id=%s", req.session_id)
 
         history = self._sessions[req.session_id]
         history.append({"role": "user", "content": req.message})
@@ -39,7 +48,9 @@ class LLMService:
         if len(history) > settings.max_history_messages + 1:
             history = [history[0]] + history[-settings.max_history_messages :]
             self._sessions[req.session_id] = history
+            logger.debug("Step 2: history trimmed to %d messages", len(history))
 
+        logger.debug("Step 3: calling LLM | model=%s temperature=%s", settings.model_name, req.temperature)
         completion = await self.client.chat.completions.create(
             model=settings.model_name,
             messages=history,
@@ -49,12 +60,14 @@ class LLMService:
 
         assistant_reply = completion.choices[0].message.content or ""
         history.append({"role": "assistant", "content": assistant_reply})
+        logger.debug("Step 4: assistant replied | reply=%r", assistant_reply)
 
         usage = TokenUsage(
             prompt_tokens=completion.usage.prompt_tokens if completion.usage else 0,
             completion_tokens=completion.usage.completion_tokens if completion.usage else 0,
             total_tokens=completion.usage.total_tokens if completion.usage else 0,
         )
+        logger.debug("Step 5: token usage | %s", usage)
 
         return MultiTurnChatResponse(
             session_id=req.session_id,
@@ -67,6 +80,7 @@ class LLMService:
     # FEATURE 3: Guaranteed Structured Outputs (JSON Schema)
     # ---------------------------------------------------------
     async def extract_ticket(self, text: str) -> TicketExtraction:
+        logger.debug("extract_ticket | Step 1: input text=%r", text)
         completion = await self.client.beta.chat.completions.parse(
             model=settings.model_name,
             messages=[
@@ -80,7 +94,9 @@ class LLMService:
             temperature=0.0,  # Always 0.0 for deterministic data extraction
             extra_body={"options": {"num_ctx": settings.default_num_ctx}},
         )
-        return completion.choices[0].message.parsed
+        parsed = completion.choices[0].message.parsed
+        logger.debug("extract_ticket | Step 2: parsed result=%s", parsed)
+        return parsed
 
     # ---------------------------------------------------------
     # FEATURE 4: Native Tool Calling Loop
@@ -100,6 +116,8 @@ class LLMService:
         return json.dumps(result)
 
     async def chat_with_tools(self, req: ToolChatRequest) -> ToolChatResponse:
+        logger.debug("chat_with_tools | prompt=%r", req.prompt)
+
         # 1. Define JSON Schema describing our Python function to the LLM
         tools_schema = [
             {
@@ -140,6 +158,7 @@ class LLMService:
         response_message = first_response.choices[0].message
         tool_calls = response_message.tool_calls
         executed_tools: list[str] = []
+        logger.debug("Step 2: first LLM call | tool_calls_requested=%d", len(tool_calls or []))
 
         # 3. If the LLM requested tool execution, run the Python code locally
         if tool_calls:
@@ -152,6 +171,7 @@ class LLMService:
                 if fn_name == "check_service_health":
                     tool_output = self._check_service_health(**fn_args)
                     executed_tools.append(f"{fn_name}({fn_args})")
+                    logger.debug("Step 3: executed %s(%s) -> %s", fn_name, fn_args, tool_output)
 
                     # 4. Append the tool's output back into conversation history
                     messages.append(
@@ -163,6 +183,7 @@ class LLMService:
                     )
 
             # 5. Second LLM Call: Synthesize final human-readable answer from tool data
+            logger.debug("Step 5: second LLM call to synthesize final answer")
             final_response = await self.client.chat.completions.create(
                 model=settings.model_name,
                 messages=messages,
@@ -176,10 +197,12 @@ class LLMService:
                 final_response.usage.completion_tokens or 0
             )
         else:
+            logger.debug("Step 3-5: skipped, LLM answered directly without tools")
             final_text = response_message.content or ""
             total_prompt = first_response.usage.prompt_tokens or 0
             total_comp = first_response.usage.completion_tokens or 0
 
+        logger.debug("chat_with_tools | final_text=%r tools_executed=%s", final_text, executed_tools)
         return ToolChatResponse(
             reply=final_text,
             tools_executed=executed_tools,

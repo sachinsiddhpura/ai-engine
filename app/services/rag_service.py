@@ -1,3 +1,4 @@
+import logging
 import uuid
 import fitz  # PyMuPDF
 from openai import AsyncOpenAI
@@ -6,6 +7,8 @@ from qdrant_client.models import Distance, PointStruct, VectorParams
 from sentence_transformers import CrossEncoder
 from app.config import settings
 from app.schemas.rag import IngestResponse, RAGQueryRequest, RAGQueryResponse, RetrievedChunk
+
+logger = logging.getLogger(__name__)
 
 
 class RAGService:
@@ -59,15 +62,18 @@ class RAGService:
     # WRITE PATH: PDF -> Chunks -> Embeddings -> Qdrant
     # ---------------------------------------------------------
     async def ingest_pdf(self, filename: str, file_bytes: bytes) -> IngestResponse:
+        logger.debug("ingest_pdf | Step 1: ensuring collection exists")
         await self._ensure_collection()
 
         doc = fitz.open(stream=file_bytes, filetype="pdf")
         points: list[PointStruct] = []
+        logger.debug("Step 2: opened PDF %r | pages=%d", filename, len(doc))
 
         for page_idx in range(len(doc)):
             page_num = page_idx + 1
             page_text = doc[page_idx].get_text("text")
             chunks = self._chunk_text(page_text)
+            logger.debug("Step 3: page %d -> %d chunk(s)", page_num, len(chunks))
 
             for chunk in chunks:
                 vector = await self._get_embedding(chunk)
@@ -84,11 +90,15 @@ class RAGService:
                 )
 
         if points:
+            logger.debug("Step 4: upserting %d point(s) into %s", len(points), settings.qdrant_collection)
             await self.qdrant.upsert(
                 collection_name=settings.qdrant_collection,
                 points=points,
             )
+        else:
+            logger.debug("Step 4: no points to upsert")
 
+        logger.debug("Step 5: ingest complete | pages=%d chunks=%d", len(doc), len(points))
         return IngestResponse(
             filename=filename,
             pages_processed=len(doc),
@@ -100,10 +110,12 @@ class RAGService:
     # READ PATH: Embed Query -> Qdrant Top-K -> Rerank -> LLM
     # ---------------------------------------------------------
     async def query(self, req: RAGQueryRequest) -> RAGQueryResponse:
+        logger.debug("query | question=%r", req.question)
         await self._ensure_collection()
 
         # 1. Embed the user's question
         query_vector = await self._get_embedding(req.question)
+        logger.debug("Step 1: question embedded | dims=%d", len(query_vector))
 
         # 2. Broad recall from Qdrant
         search_results = await self.qdrant.query_points(
@@ -112,8 +124,10 @@ class RAGService:
             limit=req.initial_top_k,
         )
         hits = search_results.points
+        logger.debug("Step 2: Qdrant returned %d hit(s)", len(hits))
 
         if not hits:
+            logger.debug("Step 2: no hits, returning early")
             return RAGQueryResponse(
                 question=req.question,
                 answer="No documents have been indexed yet. Please upload a PDF first.",
@@ -129,6 +143,7 @@ class RAGService:
             key=lambda item: float(item[1]),
             reverse=True,
         )[: req.final_top_k]
+        logger.debug("Step 3: reranked, keeping top %d", len(scored_hits))
 
         # 4. Build grounded context block with citations
         context_blocks: list[str] = []
@@ -149,6 +164,7 @@ class RAGService:
             )
 
         context_str = "\n\n---\n\n".join(context_blocks)
+        logger.debug("Step 4: context built | sources=%s", [s.source for s in retrieved_sources])
 
         # 5. Generate answer strictly grounded in retrieved chunks
         completion = await self.llm_client.chat.completions.create(
@@ -172,9 +188,11 @@ class RAGService:
             extra_body={"options": {"num_ctx": settings.default_num_ctx}},
         )
 
+        answer = completion.choices[0].message.content or ""
+        logger.debug("Step 5: answer generated | answer=%r", answer)
         return RAGQueryResponse(
             question=req.question,
-            answer=completion.choices[0].message.content or "",
+            answer=answer,
             sources=retrieved_sources,
         )
 
