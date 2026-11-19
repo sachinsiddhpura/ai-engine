@@ -15,3 +15,10 @@ wheels/
 # Local data (vector DB storage, SQLite)
 qdrant_storage/
 *.db
+
+# Downloaded model weights
+models/
+
+# IDE
+.vscode/*
+!.vscode/launch.json
