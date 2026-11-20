@@ -1,0 +1,18 @@
+.git
+.venv
+__pycache__/
+*.py[oc]
+
+# Secrets
+.env
+
+# Local data / large artifacts (never bake these into the image)
+models/
+custom_model/
+qdrant_storage/
+*.db
+*.gguf
+*.safetensors
+
+# IDE
+.vscode/

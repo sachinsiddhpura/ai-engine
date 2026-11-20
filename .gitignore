@@ -18,6 +18,8 @@ qdrant_storage/
 
 # Downloaded model weights
 models/
+*.gguf
+*.safetensors
 
 # IDE
 .vscode/*
