@@ -9,7 +9,6 @@ mcp = FastMCP("EnterpriseOpsMCP", host="127.0.0.1", port=8001)
 
 DB_PATH = "ops_data.db"
 
-
 def init_db():
     """Seed a local SQLite database with realistic microservice & incident data."""
     conn = sqlite3.connect(DB_PATH)
@@ -59,7 +58,6 @@ def get_service_metrics(service_name: str) -> str:
         f"CPU: {row[3]}% | Version: {row[4]}"
     )
 
-
 @mcp.tool()
 def create_incident_ticket(service_name: str, severity: str, description: str) -> str:
     """Create a new incident ticket in the SQLite database when a service is degraded or down."""
@@ -74,7 +72,6 @@ def create_incident_ticket(service_name: str, severity: str, description: str) -
     conn.commit()
     conn.close()
     return f"Incident INC-{ticket_id} created for {service_name} (Severity: {severity.upper()}) at {now}."
-
 
 @mcp.tool()
 def search_knowledge_base(query: str) -> str:
@@ -95,7 +92,6 @@ def search_knowledge_base(query: str) -> str:
         )
     except Exception as e:
         return f"Knowledge base search failed: {str(e)}"
-
 
 if __name__ == "__main__":
     init_db()

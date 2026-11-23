@@ -8,7 +8,6 @@ from app.schemas.agent import AgentRunResponse, ToolStep
 
 logger = logging.getLogger(__name__)
 
-
 class AgentService:
     def __init__(self):
         self.llm = ChatOpenAI(
@@ -89,6 +88,5 @@ class AgentService:
             final_answer=final_answer,
             steps_taken=steps,
         )
-
 
 agent_service = AgentService()

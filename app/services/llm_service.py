@@ -15,7 +15,6 @@ from app.schemas.chat import (
 
 logger = logging.getLogger(__name__)
 
-
 class LLMService:
     def __init__(self):
         self.client = AsyncOpenAI(
@@ -212,6 +211,5 @@ class LLMService:
                 total_tokens=total_prompt + total_comp,
             ),
         )
-
 
 llm_service = LLMService()

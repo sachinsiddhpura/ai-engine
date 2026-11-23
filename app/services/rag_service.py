@@ -10,7 +10,6 @@ from app.schemas.rag import IngestResponse, RAGQueryRequest, RAGQueryResponse, R
 
 logger = logging.getLogger(__name__)
 
-
 class RAGService:
     def __init__(self):
         self.llm_client = AsyncOpenAI(
@@ -195,6 +194,5 @@ class RAGService:
             answer=answer,
             sources=retrieved_sources,
         )
-
 
 rag_service = RAGService()

@@ -19,6 +19,7 @@ def diagnose_spring_boot_error():
     # 3. Configure 4-bit Quantization (compresses model 4x if NVIDIA GPU is available)
     quant_config = None
     if has_cuda:
+        print("yes nVidia available")
         quant_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
