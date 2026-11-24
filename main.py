@@ -6,6 +6,7 @@ from app.routers.chat import router as chat_router
 from app.routers.rag import router as rag_router
 from app.routers.agent import router as agent_router
 from app.routers.ops import router as ops_router
+from app.routers.multilingual import router as multilingual_router
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -18,7 +19,6 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Enable CORS for React MUI Frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -31,6 +31,7 @@ app.include_router(chat_router)
 app.include_router(rag_router)
 app.include_router(agent_router)
 app.include_router(ops_router)
+app.include_router(multilingual_router)
 
 @app.get("/health")
 async def health_check():

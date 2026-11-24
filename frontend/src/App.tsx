@@ -13,6 +13,7 @@ import ChatIcon from '@mui/icons-material/Chat';
 import DataObjectIcon from '@mui/icons-material/DataObject';
 import HandymanIcon from '@mui/icons-material/Handyman';
 import DnsIcon from '@mui/icons-material/Dns';
+import TranslateIcon from '@mui/icons-material/Translate';
 
 import { getAppTheme } from './theme/theme';
 import { Header } from './components/Header';
@@ -22,6 +23,7 @@ import { ChatTab } from './components/ChatTab';
 import { ExtractTab } from './components/ExtractTab';
 import { ToolChatTab } from './components/ToolChatTab';
 import { OpsTab } from './components/OpsTab';
+import { MultilingualTab } from './components/MultilingualTab';
 import { getHealth, type HealthResponse } from './api/client';
 
 export const App: React.FC = () => {
@@ -93,6 +95,7 @@ export const App: React.FC = () => {
               <Tab icon={<DataObjectIcon />} iconPosition="start" label="Structured Extraction" />
               <Tab icon={<HandymanIcon />} iconPosition="start" label="Tool Calling" />
               <Tab icon={<DnsIcon />} iconPosition="start" label="Live Ops Database" />
+              <Tab icon={<TranslateIcon />} iconPosition="start" label="Gujarati Voice RAG" />
             </Tabs>
           </Container>
         </Box>
@@ -105,6 +108,7 @@ export const App: React.FC = () => {
           {activeTab === 3 && <ExtractTab />}
           {activeTab === 4 && <ToolChatTab />}
           {activeTab === 5 && <OpsTab />}
+          {activeTab === 6 && <MultilingualTab />}
         </Box>
       </Box>
     </ThemeProvider>

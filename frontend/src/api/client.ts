@@ -91,6 +91,15 @@ export interface AgentRunResponse {
   steps_taken: ToolStep[];
 }
 
+export interface MultilingualRAGResponse {
+  original_gujarati_query: string;
+  translated_english_query: string;
+  english_rag_answer: string;
+  gujarati_final_answer: string;
+  citations: string[];
+  audio_output_path: string | null;
+}
+
 export interface ServiceItem {
   name: string;
   owner_team: string;
@@ -145,6 +154,35 @@ export const queryRAG = async (data: RAGQueryRequest): Promise<RAGQueryResponse>
 export const runAgent = async (goal: string): Promise<AgentRunResponse> => {
   const res = await api.post<AgentRunResponse>('/api/v1/agent/run', { goal });
   return res.data;
+};
+
+export const askGujaratiText = async (
+  gujaratiQuestion: string,
+  includeAudio: boolean,
+): Promise<MultilingualRAGResponse> => {
+  const res = await api.post<MultilingualRAGResponse>('/api/v1/multilingual/ask-gujarati-text', {
+    gujarati_question: gujaratiQuestion,
+    include_audio: includeAudio,
+  });
+  return res.data;
+};
+
+export const askGujaratiVoice = async (
+  audioFile: File,
+  includeAudio: boolean,
+): Promise<MultilingualRAGResponse> => {
+  const formData = new FormData();
+  formData.append('audio_file', audioFile);
+  formData.append('include_audio', String(includeAudio));
+  const res = await api.post<MultilingualRAGResponse>('/api/v1/multilingual/ask-gujarati-voice', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data;
+};
+
+export const getGeneratedAudioUrl = (audioOutputPath: string): string => {
+  const filename = audioOutputPath.split(/[\\/]/).pop();
+  return `${API_BASE}/api/v1/multilingual/audio/${encodeURIComponent(filename || '')}`;
 };
 
 export const getOpsServices = async (): Promise<ServiceItem[]> => {

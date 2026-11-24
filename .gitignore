@@ -16,6 +16,9 @@ wheels/
 qdrant_storage/
 *.db
 
+# Generated Gujarati text-to-speech responses
+generated_audio/
+
 # Downloaded model weights
 models/
 *.gguf
@@ -24,3 +27,16 @@ models/
 # IDE
 .vscode/*
 !.vscode/launch.json
+.idea/
+
+# Test, coverage, and tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
