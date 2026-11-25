@@ -8,7 +8,6 @@ class GujaratiTextRAGRequest(BaseModel):
     )
     include_audio: bool = Field(default=True)
 
-
 class MultilingualRAGResponse(BaseModel):
     original_gujarati_query: str
     translated_english_query: str

@@ -9,7 +9,8 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from app.schemas.multilingul import MultilingualRAGResponse
 from app.schemas.rag import RAGQueryRequest
 from app.services.guadrails import validate_input_guardrails
-from app.services.rag_service import rag_service
+# from app.services.rag_service import rag_service
+from app.services.rag_service_parent import rag_service_parent
 
 class VoiceTranslationPipelineService:
     def __init__(self):
@@ -88,7 +89,7 @@ class VoiceTranslationPipelineService:
         )
 
         # Step 3 (Stage C): Execute Core English Hybrid RAG (Qdrant + Cross-Encoder + Qwen2.5)
-        rag_result = await rag_service.query(RAGQueryRequest(question=english_query))
+        rag_result = await rag_service_parent.query(RAGQueryRequest(question=english_query))
         english_answer = rag_result.answer
 
         # Step 4 (Stage D): Translate English RAG answer -> Gujarati ('guj_Gujr')

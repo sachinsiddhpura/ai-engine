@@ -7,6 +7,7 @@ from app.routers.rag import router as rag_router
 from app.routers.agent import router as agent_router
 from app.routers.ops import router as ops_router
 from app.routers.multilingual import router as multilingual_router
+from app.routers.universal_voice import router as universal_voice_router
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -32,6 +33,7 @@ app.include_router(rag_router)
 app.include_router(agent_router)
 app.include_router(ops_router)
 app.include_router(multilingual_router)
+app.include_router(universal_voice_router)
 
 @app.get("/health")
 async def health_check():
