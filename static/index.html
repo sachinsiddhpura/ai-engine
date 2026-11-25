@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Engine Console</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span class="logo">⚡ AI Engine</span>
+      </div>
+      <button class="new-chat-btn" id="newChatBtn">+ New chat</button>
+      <nav class="mode-list" id="modeList"></nav>
+      <div class="sidebar-footer">
+        <span class="health-dot" id="healthDot"></span>
+        <span id="healthText">checking…</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="modeTitle">Chat</h1>
+          <p id="modeDesc">Multi-turn memory chat</p>
+        </div>
+      </header>
+
+      <section class="messages" id="messages"></section>
+
+      <section class="composer" id="composer"></section>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

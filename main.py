@@ -1,6 +1,7 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.routers.chat import router as chat_router
 from app.routers.rag import router as rag_router
@@ -43,3 +44,6 @@ async def health_check():
         "qdrant_url": settings.qdrant_url,
         "mcp_server_url": settings.mcp_server_url,
     }
+
+# Serve the web console. Mounted last so it never shadows the API routes above.
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
