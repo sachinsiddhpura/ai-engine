@@ -15,6 +15,27 @@ from app.schemas.chat import (
 
 logger = logging.getLogger(__name__)
 
+TOOLS_SCHEMA = [
+    {
+        "type": "function",
+        "function": {
+            "name": "check_service_health",
+            "description": "Check real-time operational health and latency of a backend microservice (e.g., auth, payments, notifications).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "service_name": {
+                        "type": "string",
+                        "description": "Name of the microservice to check",
+                    }
+                },
+                "required": ["service_name"],
+            },
+        },
+    }
+]
+
+
 class LLMService:
     def __init__(self):
         self.client = AsyncOpenAI(
@@ -117,27 +138,6 @@ class LLMService:
     async def chat_with_tools(self, req: ToolChatRequest) -> ToolChatResponse:
         logger.debug("chat_with_tools | prompt=%r", req.prompt)
 
-        # 1. Define JSON Schema describing our Python function to the LLM
-        tools_schema = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "check_service_health",
-                    "description": "Check real-time operational health and latency of a backend microservice (e.g., auth, payments, notifications).",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "service_name": {
-                                "type": "string",
-                                "description": "Name of the microservice to check",
-                            }
-                        },
-                        "required": ["service_name"],
-                    },
-                },
-            }
-        ]
-
         messages = [
             {
                 "role": "system",
@@ -150,7 +150,7 @@ class LLMService:
         first_response = await self.client.chat.completions.create(
             model=settings.model_name,
             messages=messages,
-            tools=tools_schema,
+            tools=TOOLS_SCHEMA,
             temperature=0.0,
         )
 
@@ -211,5 +211,73 @@ class LLMService:
                 total_tokens=total_prompt + total_comp,
             ),
         )
+
+    # ---------------------------------------------------------
+    # FEATURE 5: Unified Chat — caller-supplied persistent history + live tools
+    # ---------------------------------------------------------
+    async def chat_unified(self, history: list[dict], message: str) -> dict:
+        """Like chat_with_tools, but memory is the caller-supplied history (e.g. loaded
+        from a database) instead of the in-memory self._sessions dict."""
+        logger.debug("chat_unified | message=%r history_len=%d", message, len(history))
+        messages = history + [{"role": "user", "content": message}]
+
+        first_response = await self.client.chat.completions.create(
+            model=settings.model_name,
+            messages=messages,
+            tools=TOOLS_SCHEMA,
+            temperature=0.3,
+            extra_body={"options": {"num_ctx": settings.default_num_ctx}},
+        )
+
+        response_message = first_response.choices[0].message
+        tool_calls = response_message.tool_calls
+        executed_tools: list[str] = []
+        logger.debug("chat_unified | tool_calls_requested=%d", len(tool_calls or []))
+
+        if tool_calls:
+            messages.append(response_message)
+            for tool_call in tool_calls:
+                fn_name = tool_call.function.name
+                fn_args = json.loads(tool_call.function.arguments)
+
+                if fn_name == "check_service_health":
+                    tool_output = self._check_service_health(**fn_args)
+                    executed_tools.append(f"{fn_name}({fn_args})")
+                    logger.debug("chat_unified | executed %s(%s) -> %s", fn_name, fn_args, tool_output)
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": tool_output,
+                        }
+                    )
+
+            final_response = await self.client.chat.completions.create(
+                model=settings.model_name,
+                messages=messages,
+                temperature=0.3,
+            )
+            final_text = final_response.choices[0].message.content or ""
+            total_prompt = (first_response.usage.prompt_tokens or 0) + (
+                final_response.usage.prompt_tokens or 0
+            )
+            total_comp = (first_response.usage.completion_tokens or 0) + (
+                final_response.usage.completion_tokens or 0
+            )
+        else:
+            final_text = response_message.content or ""
+            total_prompt = first_response.usage.prompt_tokens or 0
+            total_comp = first_response.usage.completion_tokens or 0
+
+        logger.debug("chat_unified | final_text=%r tools_executed=%s", final_text, executed_tools)
+        return {
+            "reply": final_text,
+            "tools_executed": executed_tools,
+            "usage": TokenUsage(
+                prompt_tokens=total_prompt,
+                completion_tokens=total_comp,
+                total_tokens=total_prompt + total_comp,
+            ),
+        }
 
 llm_service = LLMService()

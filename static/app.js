@@ -52,9 +52,15 @@ const MODES = {
     kind: "voice",
     api: "universal",
   },
+  unified: {
+    label: "🧠 Smart Chat",
+    title: "Smart Chat",
+    desc: "One box, login required: attach a PDF for RAG, attach/record audio for voice, or just type — saved to a database per account.",
+    kind: "unified",
+  },
 };
 
-const MODE_ORDER = ["chat", "extract", "toolchat", "rag", "agent", "ops", "multilingual", "universal"];
+const MODE_ORDER = ["unified", "chat", "extract", "toolchat", "rag", "agent", "ops", "multilingual", "universal"];
 
 // ---------------------------------------------------------
 // State
@@ -78,6 +84,9 @@ function saveState() {
         chatSessionId: state.chatSessionId,
         chatSettings: state.chatSettings,
         currentMode: state.currentMode,
+        unifiedAuth: state.unifiedAuth,
+        unifiedConversationId: state.unifiedConversationId,
+        unifiedIncludeAudio: state.unifiedIncludeAudio,
       })
     );
   } catch (_) {}
@@ -96,6 +105,10 @@ const state = {
   mediaRecorder: null,
   recordedChunks: [],
   isRecording: false,
+  unifiedAuth: saved.unifiedAuth || null, // {token, username}
+  unifiedConversationId: saved.unifiedConversationId || null,
+  unifiedIncludeAudio: saved.unifiedIncludeAudio ?? true,
+  unifiedConversations: [],
 };
 
 for (const key of MODE_ORDER) {
@@ -139,6 +152,47 @@ async function getJSON(url) {
   const res = await fetch(url);
   const data = await res.json().catch(() => []);
   if (!res.ok) throw new Error((data && data.detail) || res.statusText);
+  return data;
+}
+
+function authHeaders() {
+  return state.unifiedAuth ? { Authorization: `Bearer ${state.unifiedAuth.token}` } : {};
+}
+
+async function authGet(url) {
+  const res = await fetch(url, { headers: authHeaders() });
+  if (res.status === 401) {
+    unifiedLogout();
+    throw new Error("Session expired, please log in again.");
+  }
+  const data = await res.json().catch(() => []);
+  if (!res.ok) throw new Error((data && data.detail) || res.statusText);
+  return data;
+}
+
+async function authPostJSON(url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body || {}),
+  });
+  if (res.status === 401) {
+    unifiedLogout();
+    throw new Error("Session expired, please log in again.");
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || res.statusText);
+  return data;
+}
+
+async function authPostForm(url, formData) {
+  const res = await fetch(url, { method: "POST", headers: authHeaders(), body: formData });
+  if (res.status === 401) {
+    unifiedLogout();
+    throw new Error("Session expired, please log in again.");
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || res.statusText);
   return data;
 }
 
@@ -202,6 +256,7 @@ function switchMode(key) {
   renderComposer();
   renderMessages();
   if (key === "ops") loadOpsData();
+  if (key === "unified") renderUnifiedView();
 }
 
 function renderHeader() {
@@ -212,6 +267,12 @@ function renderHeader() {
 
 newChatBtn.addEventListener("click", () => {
   const mode = state.currentMode;
+  if (mode === "unified") {
+    state.unifiedConversationId = null;
+    saveState();
+    renderUnifiedView();
+    return;
+  }
   state.conversations[mode] = [];
   if (mode === "chat") state.chatSessionId = crypto.randomUUID();
   if (mode === "rag") state.ragReady = false;
@@ -242,6 +303,11 @@ function renderMessages() {
 
   if (mode === "ops") {
     renderOpsView();
+    return;
+  }
+
+  if (mode === "unified") {
+    renderUnifiedView();
     return;
   }
 
@@ -371,6 +437,14 @@ function renderComposer() {
     return;
   }
 
+  if (kind === "unified" && !state.unifiedAuth) {
+    const inner = document.createElement("div");
+    inner.className = "composer-inner hint";
+    inner.textContent = "Log in above to start chatting.";
+    composerEl.appendChild(inner);
+    return;
+  }
+
   const inner = document.createElement("div");
   inner.className = "composer-inner";
 
@@ -384,15 +458,21 @@ function renderComposer() {
   }
 
   let includeAudioCheckbox = null;
-  if (kind === "voice") {
+  if (kind === "voice" || kind === "unified") {
     const row = document.createElement("div");
     row.className = "options-row";
     const label = document.createElement("label");
     includeAudioCheckbox = document.createElement("input");
     includeAudioCheckbox.type = "checkbox";
-    includeAudioCheckbox.checked = true;
+    includeAudioCheckbox.checked = kind === "unified" ? state.unifiedIncludeAudio : true;
+    includeAudioCheckbox.addEventListener("change", () => {
+      if (kind === "unified") {
+        state.unifiedIncludeAudio = includeAudioCheckbox.checked;
+        saveState();
+      }
+    });
     label.appendChild(includeAudioCheckbox);
-    label.appendChild(document.createTextNode(" Synthesize spoken reply"));
+    label.appendChild(document.createTextNode(" Synthesize spoken reply (for voice attachments)"));
     row.appendChild(label);
     inner.appendChild(row);
   }
@@ -441,6 +521,26 @@ function renderComposer() {
     row.appendChild(micBtn);
   }
 
+  if (kind === "unified") {
+    row.appendChild(buildIconButton("📎", "Attach PDF or audio", () => attachInput.click()));
+    const attachInput = document.createElement("input");
+    attachInput.type = "file";
+    attachInput.accept = ".pdf,audio/*";
+    attachInput.style.display = "none";
+    attachInput.addEventListener("change", () => {
+      if (attachInput.files[0]) handleUnifiedSubmit(textarea.value.trim(), attachInput.files[0]);
+      attachInput.value = "";
+      textarea.value = "";
+    });
+    row.appendChild(attachInput);
+
+    const micBtn = buildIconButton("🎤", "Record", () =>
+      toggleUnifiedRecording(micBtn, includeAudioCheckbox)
+    );
+    micBtn.id = "unifiedMicBtn";
+    row.appendChild(micBtn);
+  }
+
   const textarea = document.createElement("textarea");
   textarea.className = "composer-text";
   textarea.rows = 1;
@@ -470,6 +570,8 @@ function renderComposer() {
     textarea.style.height = "auto";
     if (kind === "voice") {
       handleVoiceSubmit(mode, value, includeAudioCheckbox.checked);
+    } else if (kind === "unified") {
+      handleUnifiedSubmit(value, null);
     } else {
       handleTextSubmit(mode, value);
     }
@@ -516,6 +618,7 @@ function placeholderFor(mode) {
     case "agent": return "Describe a multi-step goal for the agent…";
     case "multilingual": return "Gujarati પ્રશ્ન ટાઈપ કરો…";
     case "universal": return "Ask in any language…";
+    case "unified": return "Message Smart Chat, or attach a PDF/audio file…";
     default: return "Type a message…";
   }
 }
@@ -655,6 +758,222 @@ async function toggleRecording(mode, btn, includeAudioCheckbox) {
     btn.classList.add("recording");
   } catch (err) {
     alert("Microphone access failed: " + (err.message || err));
+  }
+}
+
+// ---------------------------------------------------------
+// Smart Chat (unified, DB-backed, login required)
+// ---------------------------------------------------------
+async function toggleUnifiedRecording(btn, includeAudioCheckbox) {
+  if (state.isRecording) {
+    state.mediaRecorder.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream);
+    state.recordedChunks = [];
+    recorder.ondataavailable = (e) => state.recordedChunks.push(e.data);
+    recorder.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      state.isRecording = false;
+      btn.classList.remove("recording");
+      const blob = new Blob(state.recordedChunks, { type: "audio/webm" });
+      blob.name = "recording.webm";
+      handleUnifiedSubmit("", blob, includeAudioCheckbox.checked);
+    };
+    recorder.start();
+    state.mediaRecorder = recorder;
+    state.isRecording = true;
+    btn.classList.add("recording");
+  } catch (err) {
+    alert("Microphone access failed: " + (err.message || err));
+  }
+}
+
+function unifiedDbMsgToViewMsg(m) {
+  const view = { role: m.role, text: m.content };
+  const extra = m.extra || {};
+  if (extra.tools_executed && extra.tools_executed.length) view.chips = extra.tools_executed;
+  if (extra.sources && extra.sources.length) view.sources = extra.sources;
+  if (extra.citations && extra.citations.length) view.chips = extra.citations;
+  if (extra.audio_output_path) view.audioSrc = audioUrl("universal", extra.audio_output_path);
+  if (extra.attachment) view.meta = `📎 ${extra.attachment}`;
+  return view;
+}
+
+function unifiedLogout() {
+  state.unifiedAuth = null;
+  state.unifiedConversationId = null;
+  saveState();
+  renderComposer();
+  renderMessages();
+}
+
+function renderUnifiedLogin() {
+  const wrap = document.createElement("div");
+  wrap.className = "empty-state login-box";
+  wrap.innerHTML =
+    "<h2>Smart Chat — sign in</h2>" +
+    "<p>Dummy static accounts for now: alice/alice123, bob/bob123, admin/admin123.</p>";
+
+  const form = document.createElement("div");
+  form.className = "login-form";
+  const userInput = document.createElement("input");
+  userInput.type = "text";
+  userInput.placeholder = "username";
+  const passInput = document.createElement("input");
+  passInput.type = "password";
+  passInput.placeholder = "password";
+  const btn = document.createElement("button");
+  btn.className = "send-btn login-submit";
+  btn.textContent = "Log in";
+  const errorEl = document.createElement("div");
+  errorEl.className = "login-error";
+
+  async function doLogin() {
+    errorEl.textContent = "";
+    try {
+      const res = await postJSON("/api/v1/auth/login", {
+        username: userInput.value.trim(),
+        password: passInput.value,
+      });
+      state.unifiedAuth = { token: res.token, username: res.username };
+      state.unifiedConversationId = null;
+      saveState();
+      renderComposer();
+      renderUnifiedView();
+    } catch (err) {
+      errorEl.textContent = err.message || "Login failed";
+    }
+  }
+
+  btn.addEventListener("click", doLogin);
+  userInput.addEventListener("keydown", (e) => e.key === "Enter" && doLogin());
+  passInput.addEventListener("keydown", (e) => e.key === "Enter" && doLogin());
+
+  form.appendChild(userInput);
+  form.appendChild(passInput);
+  form.appendChild(btn);
+  wrap.appendChild(form);
+  wrap.appendChild(errorEl);
+  messagesEl.appendChild(wrap);
+}
+
+async function renderUnifiedView() {
+  if (state.currentMode !== "unified") return;
+  messagesEl.innerHTML = "";
+
+  if (!state.unifiedAuth) {
+    renderUnifiedLogin();
+    return;
+  }
+
+  const layout = document.createElement("div");
+  layout.className = "unified-layout";
+
+  const list = document.createElement("div");
+  list.className = "conv-list";
+  const listHeader = document.createElement("div");
+  listHeader.className = "conv-list-header";
+  const nameSpan = document.createElement("span");
+  nameSpan.textContent = state.unifiedAuth.username;
+  const logoutBtn = document.createElement("button");
+  logoutBtn.className = "conv-logout";
+  logoutBtn.textContent = "Logout";
+  logoutBtn.addEventListener("click", unifiedLogout);
+  listHeader.appendChild(nameSpan);
+  listHeader.appendChild(logoutBtn);
+  list.appendChild(listHeader);
+
+  const newConvBtn = document.createElement("button");
+  newConvBtn.className = "conv-new";
+  newConvBtn.textContent = "+ New chat";
+  newConvBtn.addEventListener("click", () => {
+    state.unifiedConversationId = null;
+    saveState();
+    renderUnifiedView();
+  });
+  list.appendChild(newConvBtn);
+
+  const main = document.createElement("div");
+  main.className = "conv-main";
+  layout.appendChild(list);
+  layout.appendChild(main);
+  messagesEl.appendChild(layout);
+
+  let conversations;
+  try {
+    conversations = await authGet("/api/v1/unified/conversations");
+  } catch (err) {
+    return; // authGet already handled logout + re-render on 401
+  }
+  state.unifiedConversations = conversations;
+
+  for (const c of conversations) {
+    const item = document.createElement("div");
+    item.className = "conv-item" + (c.id === state.unifiedConversationId ? " active" : "");
+    item.textContent = c.title;
+    item.addEventListener("click", () => {
+      state.unifiedConversationId = c.id;
+      saveState();
+      renderUnifiedView();
+    });
+    list.appendChild(item);
+  }
+
+  if (!state.unifiedConversationId) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.innerHTML = `<h2>${MODES.unified.title}</h2><p>${MODES.unified.desc}</p>`;
+    main.appendChild(empty);
+    return;
+  }
+
+  let msgs;
+  try {
+    msgs = await authGet(`/api/v1/unified/conversations/${state.unifiedConversationId}/messages`);
+  } catch (err) {
+    return;
+  }
+
+  for (const m of msgs) {
+    main.appendChild(renderMessageNode(unifiedDbMsgToViewMsg(m)));
+  }
+  main.scrollTop = main.scrollHeight;
+}
+
+async function handleUnifiedSubmit(text, file, includeAudioOverride) {
+  if (!state.unifiedAuth) return;
+
+  const fd = new FormData();
+  if (state.unifiedConversationId) fd.append("conversation_id", state.unifiedConversationId);
+  fd.append("message", text || "");
+  fd.append(
+    "include_audio",
+    String(includeAudioOverride !== undefined ? includeAudioOverride : state.unifiedIncludeAudio)
+  );
+  if (file) fd.append("file", file, file.name || "recording.webm");
+
+  await renderUnifiedView();
+  const mainPane = messagesEl.querySelector(".conv-main");
+  if (mainPane) {
+    mainPane.appendChild(
+      renderMessageNode({ role: "user", text: text || (file ? `📎 ${file.name || "voice message"}` : "") })
+    );
+    mainPane.appendChild(renderMessageNode({ role: "assistant", text: "", pending: true }));
+    mainPane.scrollTop = mainPane.scrollHeight;
+  }
+
+  try {
+    const res = await authPostForm("/api/v1/unified/send", fd);
+    state.unifiedConversationId = res.conversation_id;
+    saveState();
+    await renderUnifiedView();
+  } catch (err) {
+    await renderUnifiedView();
+    const pane = messagesEl.querySelector(".conv-main");
+    if (pane) pane.appendChild(renderMessageNode({ role: "error", text: err.message || String(err) }));
   }
 }
 

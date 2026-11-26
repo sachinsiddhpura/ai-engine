@@ -44,7 +44,6 @@ def diagnose_spring_boot_error():
     HikariPool-1 - Connection is not available, request timed out after 30000ms.
     Caused by: org.postgresql.util.PSQLException: FATAL: remaining connection slots are reserved
     """
-
     messages = [
         {
             "role": "system",

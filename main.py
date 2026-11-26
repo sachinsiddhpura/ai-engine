@@ -9,6 +9,8 @@ from app.routers.agent import router as agent_router
 from app.routers.ops import router as ops_router
 from app.routers.multilingual import router as multilingual_router
 from app.routers.universal_voice import router as universal_voice_router
+from app.routers.auth import router as auth_router
+from app.routers.unified_chat import router as unified_chat_router
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -35,6 +37,8 @@ app.include_router(agent_router)
 app.include_router(ops_router)
 app.include_router(multilingual_router)
 app.include_router(universal_voice_router)
+app.include_router(auth_router)
+app.include_router(unified_chat_router)
 
 @app.get("/health")
 async def health_check():
